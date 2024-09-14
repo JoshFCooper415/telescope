@@ -29,20 +29,21 @@ class Binoculars:
         quanto.quantize(self.performer_model, QUANTIZATION_CONFIG)
         quanto.quantize(self.observer_model, QUANTIZATION_CONFIG)
     
-    
-    def predict(
-        self, reference_text: str,
-        tokenizer: AutoTokenizer,
-        performer_model: AutoModelForCausalLM,
-        observer_model: AutoModelForCausalLM,
-        device
-    ):
-        return (self.compute_log_perplexity(performer_model, tokenizer, reference_text, device)) / (
-            self.compute_log_cross_perplexity(reference_text, tokenizer, observer_model, performer_model, device))
+    def predict(self, reference_text, device, score_threshold=4.3) -> True:
+        score = self.compute_score(reference_text, device)
+        if score > score_threshold:
+            return True
+        else:
+            return False
+        
+        
+    def compute_score(self, reference_text: str, device) -> float:
+        return (self.compute_log_perplexity(reference_text, self.performer_model, self.performer_tokenizer, device)) / (
+            self.compute_log_cross_perplexity(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device))
     
     
     @torch.no_grad()
-    def compute_log_perplexity(self, model: AutoModelForCausalLM, tokenizer: AutoTokenizer, reference_text: str, device):
+    def compute_log_perplexity(self, reference_text: str, model: AutoModelForCausalLM, tokenizer: AutoTokenizer, device):
         
         reference_text_tokens = tokenizer(reference_text, return_tensors="pt").to(device)
         
@@ -50,7 +51,7 @@ class Binoculars:
         word_count = 0
 
         context_tokens = tokenizer.encode("", return_tensors="pt").to(device).type(torch.int32)
-        # print(tokenizer.encode("The", return_tensors="pt").to(device).type(torch.int32))
+
         for token in reference_text_tokens['input_ids'][0]:
             
             context_tokens = torch.cat([context_tokens, token.reshape(1, 1)], dim=-1)
@@ -71,9 +72,9 @@ class Binoculars:
     @torch.no_grad()    
     def compute_log_cross_perplexity(
         self, reference_text: str,
-        tokenizer: AutoTokenizer,
-        observer_model: AutoModelForCausalLM,
         performer_model: AutoModelForCausalLM,
+        observer_model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
         device
         ):
         
@@ -156,17 +157,8 @@ if __name__ == "__main__":
     hugging_face_auth_token = get_hugging_face_auth_token("hugging_face_auth_token.txt")
     binoculars = Binoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
     
-    SENTENCE = "Roses are one of the most iconic and beloved flowers in the world, admired for their beauty, fragrance, and deep symbolism. For centuries, they have been a symbol of love, passion, beauty, and even secrecy, making them significant in various cultures and historical periods. From literature and art to gardens and personal moments, roses have held a special place in human history. This essay explores the history, symbolism, and enduring appeal of the rose, as well as its significance in art, culture, and nature."
-    binoculars_score = binoculars.predict(
-        SENTENCE, 
-        binoculars.performer_tokenizer, 
-        binoculars.observer_model, 
-        binoculars.performer_model,
-        "cuda:0",
-    )
-    print(binoculars_score)
+    SENTENCE = "Rose is a flower so beautiful that it has invoked inspiration in several artists and poets. Children are familiar with the rose and other such flowers right from toddlerhood when they took strolls in the garden, to the time they started enjoying picture books, to learning the alphabet 'R' for rose. The flower may have been a part of their home décor, or a gift they gave someone on an occasion."
+    is_ai_generated = binoculars.predict(SENTENCE, "cuda:0")
+    print(f"is ai generated: {is_ai_generated}")
     
-    if binoculars_score > 4:
-        print("AI Generated")
-    else:
-        print("Not AI Generated")
+    
