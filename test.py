@@ -8,38 +8,8 @@ import numpy as np
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from aeroblade import AEROBLADE
 
-class AEROBLADE:
-    def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
-        
-        self.lpips = LPIPS(net='vgg', version='0.1').to(self.device)
-        self.lpips.eval()
-        
-        self.aes = {
-            'SD1': AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").to(self.device),
-            'SD2': AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="vae").to(self.device),
-
-        }
-        
-        self.transform = transforms.Compose([
-            transforms.Resize((512, 512)),
-            transforms.ToTensor(),
-        ])
-
-    @torch.no_grad()
-    def compute_reconstruction_error(self, image):
-        image_tensor = self.transform(image).unsqueeze(0).to(self.device)
-        
-        errors = []
-        for ae in self.aes.values():
-            latents = ae.encode(image_tensor).latent_dist.sample()
-            reconstructed = ae.decode(latents).sample
-            error = self.lpips(image_tensor, reconstructed).item()
-            errors.append(error)
-        
-        return min(errors)
 
 def process_dataset(detector, dataset, num_samples=1000):
     errors = []

@@ -68,15 +68,14 @@ def detect_aeroblade(self, image, threshold_definitely=0.001, threshold_probably
             raise
 
         try:
-            match error:
-                case _ if error <= threshold_definitely:
-                    result = "Definitely AI-generated"
-                case _ if threshold_definitely < error <= threshold_probably:
-                    result = "Probably AI-generated"
-                case _ if threshold_probably < error <= threshold_possibly:
-                    result = "Probably not AI-generated"
-                case _:
-                    result = "Not AI-generated"
+            if error <= threshold_definitely:
+                result = "Definitely AI-generated"
+            elif threshold_definitely < error <= threshold_probably:
+                result = "Probably AI-generated"
+            elif threshold_probably < error <= threshold_possibly:
+                result = "Probably not AI-generated"
+            else:
+                result = "Not AI-generated"
             
             self.logger.info(f"AEROBLADE detection result: {result}, error={error}")
         except Exception as e:
