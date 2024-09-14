@@ -602,7 +602,7 @@
 
                         const data = await response.json();
                         
-                        let resultHTML = '<h3>Analysis Results:</h3>';
+                        let resultHTML = '<h3></h3>';
                         
                         if (data.final_result) {
                             resultHTML += `<p><strong>Final Result:</strong> ${data.final_result.is_ai_generated ? 'AI-generated' : 'Not AI-generated'}</p>`;

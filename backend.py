@@ -56,6 +56,34 @@ def analyze():
         logger.error(traceback.format_exc())
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
+def detect_aeroblade(self, image, threshold_definitely=0.001, threshold_probably=0.006, threshold_possibly=0.01):
+        self.logger.info("Entered detect_aeroblade method")
+        
+        try:
+            self.logger.info("About to compute reconstruction error")
+            error = self.compute_reconstruction_error(image)
+            self.logger.info(f"Reconstruction error: {error}")
+        except Exception as e:
+            self.logger.exception(f"Error in compute_reconstruction_error: {str(e)}")
+            raise
+
+        try:
+            match error:
+                case _ if error <= threshold_definitely:
+                    result = "Definitely AI-generated"
+                case _ if threshold_definitely < error <= threshold_probably:
+                    result = "Probably AI-generated"
+                case _ if threshold_probably < error <= threshold_possibly:
+                    result = "Probably not AI-generated"
+                case _:
+                    result = "Not AI-generated"
+            
+            self.logger.info(f"AEROBLADE detection result: {result}, error={error}")
+        except Exception as e:
+            self.logger.exception(f"Error in match statement: {str(e)}")
+            raise
+
+        return result, error
 
 def analyze_image(image_data):
     try:
@@ -76,15 +104,17 @@ def analyze_image(image_data):
 
     # AEROBLADE analysis
     try:
-        is_generated, error = aeroblade_detector.detect_aeroblade(image)
+        detection_result, error = aeroblade_detector.detect_aeroblade(image)
         result['aeroblade'] = {
-            'is_ai_generated': is_generated,
-            'telescope_score': float(error),
-            'result': f"{'AI-generated' if is_generated else 'Not AI-generated'} (Telescope_score: {error:.4f})"
-        }
+            'reconstruction_error': float(error),
+            'result': f"{detection_result} (Telescope Score: {error:.4f})"
+            }
     except Exception as e:
         logger.error(f"Failed to analyze image with AEROBLADE: {str(e)}")
         result['aeroblade'] = {'error': f'Failed to analyze image with AEROBLADE: {str(e)}'}
+
+        logger.info(jsonify(result))
+        return jsonify(result)
 
     logger.info(f"Analysis result: {result}")
     return jsonify(result)
