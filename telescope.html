@@ -579,52 +579,54 @@
                         return;
                     }
 
-                if (contentType === 'text') {
-                    content = btoa(content);
-                } else if (contentType === 'image' && !content.startsWith('data:image')) {
-                    // If it's not a data URL, we need to fetch the image and convert it
+                    if (contentType === 'image') {
+                        // Remove the data URL prefix if present
+                        content = content.replace(/^data:image\/(png|jpg|jpeg|gif);base64,/, '');
+                    }
+
                     try {
-                        const response = await fetch(content);
-                        const blob = await response.blob();
-                        content = await new Promise((resolve) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.readAsDataURL(blob);
+                        const response = await fetch('http://127.0.0.1:5000/analyze', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                content: content,
+                                type: contentType
+                            }),
                         });
+
+                        if (!response.ok) {
+                            throw new Error('API request failed');
+                        }
+
+                        const data = await response.json();
+                        
+                        let resultHTML = '<h3>Analysis Results:</h3>';
+                        
+                        if (data.final_result) {
+                            resultHTML += `<p><strong>Final Result:</strong> ${data.final_result.is_ai_generated ? 'AI-generated' : 'Not AI-generated'}</p>`;
+                            resultHTML += `<p><strong>Confidence:</strong> ${(data.final_result.confidence * 100).toFixed(2)}%</p>`;
+                            resultHTML += `<p><strong>Method:</strong> ${data.final_result.method}</p>`;
+                        }
+
+                        if (data.huggingface) {
+                            resultHTML += '<h4>HuggingFace Model:</h4>';
+                            resultHTML += `<p>${data.huggingface.result}</p>`;
+                        }
+
+                        if (data.aeroblade) {
+                            resultHTML += '<h4>AEROBLADE:</h4>';
+                            resultHTML += `<p>${data.aeroblade.result}</p>`;
+                        }
+
+                        resultContent.innerHTML = resultHTML;
                     } catch (error) {
-                        resultContent.innerHTML = '<p>Error: Failed to process image</p>';
-                        return;
+                        resultContent.innerHTML = `<p>Error: Failed to analyze content. ${error.message}</p>`;
                     }
-                }
-
-                // Remove the data URL prefix if present
-                content = content.replace(/^data:image\/(png|jpg|jpeg|gif);base64,/, '');
-
-                // Send the encoded content to the API
-                try {
-                    const response = await fetch('https://api.example.com/analyze', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            content: content,
-                            type: contentType
-                        }),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('API request failed');
-                    }
-
-                    const data = await response.json();
-                    resultContent.innerHTML = `<p>Analysis complete. ${data.result}</p>`;
-                } catch (error) {
-                    resultContent.innerHTML = '<p>Error: Failed to analyze content</p>';
-                }
-            });
-        }
-    });
+                });
+            }
+        });
 </script>
 </body>
 </html>
