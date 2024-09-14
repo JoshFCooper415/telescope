@@ -37,9 +37,8 @@ class AEROBLADE:
         try:
             # Load multiple AEs as described in the paper
             self.aes = {
-                'SD1': AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").to(self.device),
                 'SD2': AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="vae").to(self.device),
-    
+                'flx': AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="vae").to(self.device)
             }
             self.logger.info("AE models loaded successfully")
         except Exception as e:
@@ -74,13 +73,21 @@ class AEROBLADE:
             self.logger.error(f"Error in compute_reconstruction_error: {str(e)}")
             raise
 
-    def detect_aeroblade(self, image, threshold=0.02):
+    def detect_aeroblade(self, image, threshold_probably=0.01, threshold_possibly=0.03,threshold_definitely=0.008):
         self.logger.info("Detecting if image is AI-generated using AEROBLADE...")
         try:
             error = self.compute_reconstruction_error(image)
-            is_generated = error < threshold
-            self.logger.info(f"AEROBLADE detection result: is_generated={is_generated}, error={error}")
-            return is_generated, error
+            if error < threshold_definitely:
+                result = "Definitely AI-generated"
+            if error < threshold_probably:
+                result = "Probably AI-generated"
+            elif error < threshold_possibly:
+                result = "Probably not AI-generated"
+            else:
+                result = "Not AI-generated"
+            
+            self.logger.info(f"AEROBLADE detection result: {result}, error={error}")
+            return result, error
         except Exception as e:
             self.logger.error(f"Error in AEROBLADE detect: {str(e)}")
             raise
@@ -124,11 +131,11 @@ def analyze_image():
 
         # AEROBLADE analysis
         try:
-            is_generated, error = detector.detect_aeroblade(image)
+            detection_result, error = detector.detect_aeroblade(image)
             result['aeroblade'] = {
-                'is_ai_generated': is_generated,
+                'result': detection_result,
                 'reconstruction_error': float(error),
-                'result': f"{'AI-generated' if is_generated else 'Not AI-generated'} (Error: {error:.4f})"
+                'details': f"{detection_result} (Error: {error:.4f})"
             }
         except Exception as e:
             logger.error(f"Failed to analyze image with AEROBLADE: {str(e)}")
