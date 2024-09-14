@@ -13,6 +13,9 @@ import traceback
 app = Flask(__name__)
 CORS(app)
 
+with open("hugging_face_auth_token.txt") as file:
+    hugging_face_auth_token = file.readline()
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -37,8 +40,8 @@ class AEROBLADE:
         try:
             # Load multiple AEs as described in the paper
             self.aes = {
-                'SD2': AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="vae").to(self.device),
-                'flx': AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="vae").to(self.device)
+                'SD2': AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="vae", token=hugging_face_auth_token).to(self.device),
+                'flx': AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="vae", token=hugging_face_auth_token).to(self.device)
             }
             self.logger.info("AE models loaded successfully")
         except Exception as e:

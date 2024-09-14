@@ -1,0 +1,2 @@
+from binoculars import Binoculars
+

@@ -15,8 +15,8 @@ BINOCULARS_MODEL_OBSERVER_NAME = "HuggingFaceTB/SmolLM-360M"
 
 QUANTIZATION_CONFIG = QuantoConfig(weights="int4")
 
-BINOCULARS_ACCURACY_THRESHOLD = 0.9015310749276843 
-BINOCULARS_FPR_THRESHOLD = 0.8536432310785527 
+# BINOCULARS_ACCURACY_THRESHOLD = 0.9015310749276843 
+# BINOCULARS_FPR_THRESHOLD = 0.8536432310785527 
 
 
 class Binoculars:
@@ -29,18 +29,19 @@ class Binoculars:
         quanto.quantize(self.performer_model, QUANTIZATION_CONFIG)
         quanto.quantize(self.observer_model, QUANTIZATION_CONFIG)
     
-    def predict(self, reference_text, device, score_threshold=4.3) -> True:
+    def predict(self, reference_text, device, score_threshold=4.3) -> Tuple[bool, float]:
         score = self.compute_score(reference_text, device)
         if score > score_threshold:
-            return True
+            return True, score
         else:
-            return False
+            return False, score
         
         
     def compute_score(self, reference_text: str, device) -> float:
-        return (self.compute_log_perplexity(reference_text, self.performer_model, self.performer_tokenizer, device)) / (
+        score = (self.compute_log_perplexity(reference_text, self.performer_model, self.performer_tokenizer, device)) / (
             self.compute_log_cross_perplexity(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device))
-    
+
+        return score.cpu()[0]
     
     @torch.no_grad()
     def compute_log_perplexity(self, reference_text: str, model: AutoModelForCausalLM, tokenizer: AutoTokenizer, device):
@@ -99,9 +100,6 @@ class Binoculars:
             performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
             observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
             
-            # print(performer_next_tokens_logits_softmax[-1])
-            # print(observer_next_token_logits_softmax[-1])
-            
             cross_entropy = torch.dot(performer_next_tokens_logits_softmax[-1], torch.log(observer_next_token_logits_softmax[-1])) 
             print(f"cross: {cross_entropy}")
             total_cross_entropy -= cross_entropy
@@ -157,8 +155,12 @@ if __name__ == "__main__":
     hugging_face_auth_token = get_hugging_face_auth_token("hugging_face_auth_token.txt")
     binoculars = Binoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
     
-    SENTENCE = "Rose is a flower so beautiful that it has invoked inspiration in several artists and poets. Children are familiar with the rose and other such flowers right from toddlerhood when they took strolls in the garden, to the time they started enjoying picture books, to learning the alphabet 'R' for rose. The flower may have been a part of their home décor, or a gift they gave someone on an occasion."
-    is_ai_generated = binoculars.predict(SENTENCE, "cuda:0")
+    with open("binoculars_test_prompt.txt") as file:
+        SENTENCE = "\n".join(file.readlines())
+        
+    # SENTENCE = "Rose is a flower so beautiful that it has invoked inspiration in several artists and poets. Children are familiar with the rose and other such flowers right from toddlerhood when they took strolls in the garden, to the time they started enjoying picture books, to learning the alphabet 'R' for rose. The flower may have been a part of their home décor, or a gift they gave someone on an occasion."
+    is_ai_generated, score = binoculars.predict(SENTENCE, "cuda:0")
     print(f"is ai generated: {is_ai_generated}")
+    print(f"score: {score}")
     
     
