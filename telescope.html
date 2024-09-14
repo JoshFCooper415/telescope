@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Telescope | Advanced Content Detection</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔭</text></svg>">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        :root {
+            --primary-color: #6C63FF;
+            --secondary-color: #4CAF50;
+            --background-color: #F0F2F5;
+            --text-color: #333;
+            --card-bg: #FFFFFF;
+            --input-bg: #FFFFFF;
+        }
+
+        .dark-mode {
+            --primary-color: #8C83FF;
+            --secondary-color: #6ACA6B;
+            --background-color: #1F1F1F;
+            --text-color: #F0F0F0;
+            --card-bg: #2D2D2D;
+            --input-bg: #1F1F1F;
+            --tab-text-color: #F0F0F0;
+        }
+
+        .tab.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background-color: var(--card-bg);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            color: var(--tab-text-color);
+        }
+
+        body, html {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .theme-switch {
+            display: flex;
+            align-items: center;
+        }
+
+        .theme-switch label {
+            margin-right: 10px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .main-content {
+            display: flex;
+            flex-grow: 1;
+            gap: 20px;
+        }
+
+        .left-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+
+        .description {
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background-color: var(--card-bg);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .tab.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            flex-grow: 1;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        textarea, .file-drop-area {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        textarea {
+            flex-grow: 1;
+            resize: none;
+        }
+
+        .file-drop-area {
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--input-bg);
+            border: 2px dashed #ddd;
+            transition: border-color 0.3s ease, background-color 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-drop-area.drag-over {
+            border-color: var(--primary-color);
+        }
+
+        .file-drop-area p {
+            margin-bottom: 10px;
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover {
+            background-color: #5753D9;
+        }
+
+        .right-panel {
+            width: 300px;
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            transition: background-color 0.3s ease;
+        }
+
+        .result-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .result-content {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .features-btn {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 600px;
+            transition: background-color 0.3s ease;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .feature {
+            text-align: center;
+        }
+
+        .feature i {
+            font-size: 24px;
+            color: var(--secondary-color);
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .right-panel {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">AI Telescope</div>
+            <div class="theme-switch">
+                <label for="theme-toggle">☀️</label>
+                <label class="switch">
+                    <input type="checkbox" id="theme-toggle">
+                    <span class="slider"></span>
+                </label>
+                <label for="theme-toggle">🌒</label>
+            </div>
+        </header>
+        <div class="main-content">
+            <div class="left-panel">
+                <h1>AI Content Detector</h1>
+                <p class="description">Spotting AI-generated content from a mile away with unparalleled accuracy using our advanced algorithms.</p>
+                <div class="tabs">
+                    <button class="tab active" data-tab="text">Text</button>
+                    <button class="tab" data-tab="image">Image</button>
+                    <button class="tab" data-tab="code">Code</button>
+                </div>
+                <div class="tab-content active" id="text-content">
+                    <textarea placeholder="Enter your text here or drag and drop a text file..."></textarea>
+                    <button class="btn">Analyze Text</button>
+                </div>
+                <div class="tab-content" id="image-content">
+                    <div class="file-drop-area">
+                        <p>Drag and drop an image file here</p>
+                        <p>or</p>
+                        <input type="file" accept="image/*" style="display: none;" id="image-input">
+                        <label for="image-input" class="btn">Choose File</label>
+                        <p>or paste an image</p>
+                    </div>
+                    <button class="btn">Analyze Image</button>
+                </div>
+                <div class="tab-content" id="code-content">
+                    <textarea placeholder="Enter your code here or drag and drop a code file..."></textarea>
+                    <button class="btn">Analyze Code</button>
+                </div>
+            </div>
+            <div class="right-panel">
+                <div class="result-header">Analysis Result</div>
+                <div class="result-content">
+                    <!-- Results will be displayed here -->
+                </div>
+                <div class="features-btn">
+                    <button class="btn" id="show-features">View Features</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="features-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Key Features</h2>
+            <div class="features-grid">
+                <div class="feature">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <h3>Lightning Fast</h3>
+                    <p>Get results in seconds</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-shield-alt"></i>
+                    <h3>Highly Accurate</h3>
+                    <p>State-of-the-art AI models</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-lock"></i>
+                    <h3>Secure & Private</h3>
+                    <p>Your data is protected</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-sync-alt"></i>
+                    <h3>Constantly Updated</h3>
+                    <p>Stay ahead of AI advancements</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+
+        themeToggle.addEventListener('change', () => {
+            body.classList.toggle('dark-mode');
+        });
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabId = tab.getAttribute('data-tab');
+                
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                tab.classList.add('active');
+                document.getElementById(`${tabId}-content`).classList.add('active');
+            });
+        });
+
+        // Modal functionality
+        const modal = document.getElementById('features-modal');
+        const btn = document.getElementById('show-features');
+        const span = document.getElementsByClassName('close')[0];
+
+        btn.onclick = function() {
+            modal.style.display = 'block';
+        }
+
+        span.onclick = function() {
+            modal.style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Drag and drop functionality
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                const reader = new FileReader();
+
+                reader.onload = function(event) {
+                    if (e.target.tagName === 'TEXTAREA') {
+                        e.target.value = event.target.result;
+                    } else if (e.target.classList.contains('file-drop-area')) {
+                        displayImage(event.target.result);
+                    }
+                };
+
+                if (e.target.tagName === 'TEXTAREA') {
+                    reader.readAsText(file);
+                } else if (e.target.classList.contains('file-drop-area')) {
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            e.target.classList.remove('drag-over');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.target.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.target.classList.remove('drag-over');
+        }
+
+        const dropTargets = document.querySelectorAll('textarea, .file-drop-area');
+        dropTargets.forEach(target => {
+            target.addEventListener('drop', handleDrop);
+            target.addEventListener('dragover', handleDragOver);
+            target.addEventListener('dragleave', handleDragLeave);
+        });
+
+        // File input change handler
+        document.getElementById('image-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    displayImage(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Image paste functionality
+        const imageDropArea = document.querySelector('#image-content .file-drop-area');
+
+        imageDropArea.addEventListener('paste', handlePaste);
+
+        function handlePaste(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const items = e.clipboardData.items;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+
+                    reader.onload = function(event) {
+                        displayImage(event.target.result);
+                    };
+
+                    reader.readAsDataURL(blob);
+                    break;
+                }
+            }
+        }
+
+        function displayImage(src) {
+            const img = document.createElement('img');
+            img.src = src;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '200px';
+            imageDropArea.innerHTML = '';
+            imageDropArea.appendChild(img);
+        }
+
+        // Make the drop area focusable for better accessibility
+        imageDropArea.setAttribute('tabindex', '0');
+
+        // Allow pasting when the drop area is focused
+        imageDropArea.addEventListener('keydown', function(e) {
+            if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+                // Trigger the paste event
+                document.execCommand('paste');
+            }
+        });
+
+        // Updated analysis functionality
+        document.querySelectorAll('.btn').forEach(button => {
+            if (button.textContent.includes('Analyze')) {
+                button.addEventListener('click', async () => {
+                    const resultContent = document.querySelector('.result-content');
+                    resultContent.innerHTML = '<p>Analyzing...</p>';
+
+                    const activeTab = document.querySelector('.tab-content.active');
+                    let content, contentType;
+
+                    if (activeTab.id === 'text-content' || activeTab.id === 'code-content') {
+                        content = activeTab.querySelector('textarea').value;
+                        contentType = 'text';
+                    } else if (activeTab.id === 'image-content') {
+                        const img = activeTab.querySelector('img');
+                        if (img) {
+                            content = img.src;
+                            contentType = 'image';
+                        } else {
+                            resultContent.innerHTML = '<p>Error: No image selected</p>';
+                            return;
+                        }
+                    }
+
+                    if (!content) {
+                        resultContent.innerHTML = '<p>Error: No content to analyze</p>';
+                        return;
+                    }
+
+                if (contentType === 'text') {
+                    content = btoa(content);
+                } else if (contentType === 'image' && !content.startsWith('data:image')) {
+                    // If it's not a data URL, we need to fetch the image and convert it
+                    try {
+                        const response = await fetch(content);
+                        const blob = await response.blob();
+                        content = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch (error) {
+                        resultContent.innerHTML = '<p>Error: Failed to process image</p>';
+                        return;
+                    }
+                }
+
+                // Remove the data URL prefix if present
+                content = content.replace(/^data:image\/(png|jpg|jpeg|gif);base64,/, '');
+
+                // Send the encoded content to the API
+                try {
+                    const response = await fetch('https://api.example.com/analyze', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            content: content,
+                            type: contentType
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('API request failed');
+                    }
+
+                    const data = await response.json();
+                    resultContent.innerHTML = `<p>Analysis complete. ${data.result}</p>`;
+                } catch (error) {
+                    resultContent.innerHTML = '<p>Error: Failed to analyze content</p>';
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html>
