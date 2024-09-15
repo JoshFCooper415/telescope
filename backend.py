@@ -56,33 +56,6 @@ def analyze():
         logger.error(traceback.format_exc())
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-def detect_aeroblade(self, image, threshold_definitely=0.001, threshold_probably=0.006, threshold_possibly=0.01):
-        self.logger.info("Entered detect_aeroblade method")
-        
-        try:
-            self.logger.info("About to compute reconstruction error")
-            error = self.compute_reconstruction_error(image)
-            self.logger.info(f"Reconstruction error: {error}")
-        except Exception as e:
-            self.logger.exception(f"Error in compute_reconstruction_error: {str(e)}")
-            raise
-
-        try:
-            if error <= threshold_definitely:
-                result = "Definitely AI-generated"
-            elif threshold_definitely < error <= threshold_probably:
-                result = "Probably AI-generated"
-            elif threshold_probably < error <= threshold_possibly:
-                result = "Probably not AI-generated"
-            else:
-                result = "Not AI-generated"
-            
-            self.logger.info(f"AEROBLADE detection result: {result}, error={error}")
-        except Exception as e:
-            self.logger.exception(f"Error in match statement: {str(e)}")
-            raise
-
-        return result, error
 
 def analyze_image(image_data):
     try:
@@ -120,13 +93,13 @@ def analyze_image(image_data):
 
 
 def analyze_text(text_data):
-    is_ai_generated, telescope_score = text_detector.predict(text_data, device)
+    how_ai_generated_string, telescope_score = text_detector.predict(text_data, device)
     
     result = {}
     result['aeroblade'] = {
-        'is_ai_generated': is_ai_generated,
+        'is_ai_generated': how_ai_generated_string,
         'telescope_score ': float(telescope_score),
-        'result': f"{'AI-generated' if is_ai_generated else 'Not AI-generated'} (Telescope Score : {float(telescope_score):.4f})"
+        'result': f"{how_ai_generated_string} (Telescope Score : {float(telescope_score):.4f})"
     }
     
     return jsonify(result)

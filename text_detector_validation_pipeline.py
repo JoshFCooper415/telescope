@@ -49,13 +49,12 @@ def plot_roc_curve(y_true, y_scores):
 
 
 def main():
-    essay_dataset = pd.read_csv("validate_datasets/Essay_Dataset.csv")
+    essay_dataset = pd.read_csv("validate_datasets/Essay_Dataset.csv").shuff
 
     text_dataset = essay_dataset["text"]
     is_ai_generated_dataset = essay_dataset["generated"]
     
     text_detector = Binoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, HUGGING_FACE_AUTH_TOKEN)
-
     
     labels = []
     telescope_scores = []
