@@ -28,13 +28,22 @@ class Binoculars:
         
         quanto.quantize(self.performer_model, QUANTIZATION_CONFIG)
         quanto.quantize(self.observer_model, QUANTIZATION_CONFIG)
-    
-    def predict(self, reference_text, device, score_threshold=5.) -> Tuple[bool, float]:
-        score = self.compute_score(reference_text, device)
-        if score > score_threshold:
-            return True, score
+
+
+    def predict(self, reference_text, device, threshold_possibly=5.3, threshold_probably=5.7, threshold_definitely=6.2) -> Tuple[str, float]:
+        telescope_score = self.compute_score(reference_text, device)
+        
+        result_text = ""
+        if telescope_score >= threshold_definitely:
+            result_text = "Definitely AI-generated"
+        elif threshold_definitely > telescope_score >= threshold_probably:
+            result_text = "Probably AI-generated"
+        elif threshold_probably > telescope_score >= threshold_possibly:
+            result_text = "Probably not AI-generated"
         else:
-            return False, score
+            result_text = "Not AI-generated"
+            
+        return result_text, telescope_score
         
         
     def compute_score(self, reference_text: str, device) -> float:

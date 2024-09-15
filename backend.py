@@ -54,6 +54,7 @@ def analyze():
         logger.error(traceback.format_exc())
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
+
 def analyze_image(image_data):
     try:
         # Handle both raw base64 and data URL formats
@@ -78,25 +79,19 @@ def analyze_image(image_data):
         return jsonify({'error': f'Failed to analyze image with AEROBLADE: {str(e)}'}), 500
 
 def analyze_text(text_data):
-    try:
-        is_ai_generated, telescope_score = text_detector.predict(text_data, device)
-        result = {
-            'aeroblade': {
-                'is_ai_generated': is_ai_generated,
-                'telescope_score': float(telescope_score),
-                'result': f"{'AI-generated' if is_ai_generated else 'Not AI-generated'} (Telescope Score: {float(telescope_score):.4f})"
-            }
-        }
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"Failed to analyze text: {str(e)}")
-        return jsonify({'error': f'Failed to analyze text: {str(e)}'}), 500
+    how_ai_generated_string, telescope_score = text_detector.predict(text_data, device)
+    
+    result = {}
+    result['aeroblade'] = {
+        'is_ai_generated': how_ai_generated_string,
+        'telescope_score ': float(telescope_score),
+        'result': f"{how_ai_generated_string} (Telescope Score : {float(telescope_score):.4f})"
+    }
+    
+    return jsonify(result)
 
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    return response
 
+    
+    
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5080, debug=True)
