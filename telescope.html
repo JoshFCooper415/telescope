@@ -586,9 +586,13 @@
                     const activeTab = document.querySelector('.tab-content.active');
                     let content, contentType;
 
-                    if (activeTab.id === 'text-content' || activeTab.id === 'code-content') {
+                    if (activeTab.id === 'text-content') {
                         content = activeTab.querySelector('textarea').value;
                         contentType = 'text';
+                    if (activeTab.id === 'code-content'){
+                        content = activeTab.querySelector('textarea').value;
+                        contentType = 'code';
+                    }
                     } else if (activeTab.id === 'image-content') {
                         const img = activeTab.querySelector('img');
                         if (img) {

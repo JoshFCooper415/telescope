@@ -8,6 +8,7 @@ import traceback
 import torch
 from aeroblade import AEROBLADE
 from binoculars import Binoculars
+from cononculars import Conoculars
 
 # Configuration
 BINOCULARS_MODEL_PERFORMER_NAME = "HuggingFaceTB/SmolLM-360M-Instruct"
@@ -27,6 +28,7 @@ with open("hugging_face_auth_token.txt") as file:
 
 aeroblade_detector = AEROBLADE()
 text_detector = Binoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
+code_detector = Conoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
 
 @app.route('/analyze', methods=['POST', 'OPTIONS'])
 def analyze():
@@ -46,6 +48,8 @@ def analyze():
             return analyze_image(content)
         elif content_type == "text":
             return analyze_text(content)
+        elif content_type == "code":
+            return analyze_code(content)
         else:
             logger.error(f"Invalid content type: {content_type}")
             return jsonify({'error': 'Invalid content type'}), 400
@@ -79,6 +83,18 @@ def analyze_image(image_data):
         return jsonify({'error': f'Failed to analyze image with AEROBLADE: {str(e)}'}), 500
 
 def analyze_text(text_data):
+    how_ai_generated_string, telescope_score = code_detector.predict(text_data, device)
+    
+    result = {}
+    result['aeroblade'] = {
+        'is_ai_generated': how_ai_generated_string,
+        'telescope_score ': float(telescope_score),
+        'result': f"{how_ai_generated_string} (Telescope Score : {float(telescope_score):.4f})"
+    }
+    
+    return jsonify(result)
+
+def analyze_code(text_data):
     how_ai_generated_string, telescope_score = text_detector.predict(text_data, device)
     
     result = {}
