@@ -29,7 +29,7 @@ class Binoculars:
         quanto.quantize(self.performer_model, QUANTIZATION_CONFIG)
         quanto.quantize(self.observer_model, QUANTIZATION_CONFIG)
     
-    def predict(self, reference_text, device, score_threshold=4.3) -> Tuple[bool, float]:
+    def predict(self, reference_text, device, score_threshold=5.) -> Tuple[bool, float]:
         score = self.compute_score(reference_text, device)
         if score > score_threshold:
             return True, score

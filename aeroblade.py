@@ -11,8 +11,7 @@ import logging
 import traceback
 
 app = Flask(__name__)
-CORS(app)
-
+CORS(app, resources={r"/*": {"origins": "*"}})
 with open("hugging_face_auth_token.txt") as file:
     hugging_face_auth_token = file.readline()
 

@@ -320,6 +320,18 @@
                 width: 100%;
             }
         }
+        @keyframes ellipsis {
+            0% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+            100% { content: '.'; }
+        }
+        
+        .analyzing::after {
+            content: '.';
+            display: inline-block;
+            animation: ellipsis 1.5s infinite;
+        }
     </style>
 </head>
 <body>
@@ -405,6 +417,7 @@
     </div>
 
     <script>
+        const API_URL = 'http://108.18.219.188:5080';
         const themeToggle = document.getElementById('theme-toggle');
         const body = document.body;
 
@@ -430,7 +443,14 @@
         const modal = document.getElementById('features-modal');
         const btn = document.getElementById('show-features');
         const span = document.getElementsByClassName('close')[0];
-
+        document.querySelectorAll('textarea').forEach(textarea => {
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    analyze();
+                }
+            });
+        });
         btn.onclick = function() {
             modal.style.display = 'block';
         }
@@ -491,7 +511,7 @@
             target.addEventListener('dragover', handleDragOver);
             target.addEventListener('dragleave', handleDragLeave);
         });
-
+        
         // File input change handler
         document.getElementById('image-input').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -506,9 +526,15 @@
 
         // Image paste functionality
         const imageDropArea = document.querySelector('#image-content .file-drop-area');
+        imageDropArea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                analyze();
+            }
+        });
 
         imageDropArea.addEventListener('paste', handlePaste);
-
+        
         function handlePaste(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -555,7 +581,7 @@
             if (button.textContent.includes('Analyze')) {
                 button.addEventListener('click', async () => {
                     const resultContent = document.querySelector('.result-content');
-                    resultContent.innerHTML = '<p>Analyzing...</p>';
+                    resultContent.innerHTML = '<p class="analyzing">Analyzing</p>';
 
                     const activeTab = document.querySelector('.tab-content.active');
                     let content, contentType;
@@ -585,24 +611,25 @@
                     }
 
                     try {
-                        const response = await fetch('http://127.0.0.1:5000/analyze', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                content: content,
-                                type: contentType
-                            }),
-                        });
-
+    const response = await fetch(`${API_URL}/analyze`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            content: content,
+            type: contentType
+        }),
+    });
                         if (!response.ok) {
                             throw new Error('API request failed');
                         }
-
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
                         const data = await response.json();
                         
-                        let resultHTML = '<h3></h3>';
+                        let resultHTML = '<h3>Analysis Results:</h3>';
                         
                         if (data.final_result) {
                             resultHTML += `<p><strong>Final Result:</strong> ${data.final_result.is_ai_generated ? 'AI-generated' : 'Not AI-generated'}</p>`;
@@ -627,6 +654,7 @@
                 });
             }
         });
+        document.addEventListener('DOMContentLoaded', setupEventListeners);
 </script>
 </body>
 </html>
