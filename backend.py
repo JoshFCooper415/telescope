@@ -83,7 +83,7 @@ def analyze_image(image_data):
         return jsonify({'error': f'Failed to analyze image with AEROBLADE: {str(e)}'}), 500
 
 def analyze_text(text_data):
-    how_ai_generated_string, telescope_score = code_detector.predict(text_data, device)
+    how_ai_generated_string, telescope_score = text_detector.predict(text_data, device)
     
     result = {}
     result['huggingface'] = {
