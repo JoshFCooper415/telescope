@@ -86,7 +86,7 @@ def analyze_text(text_data):
     how_ai_generated_string, telescope_score = code_detector.predict(text_data, device)
     
     result = {}
-    result['aeroblade'] = {
+    result['huggingface'] = {
         'is_ai_generated': how_ai_generated_string,
         'telescope_score ': float(telescope_score),
         'result': f"{how_ai_generated_string} (Telescope Score : {float(telescope_score):.4f})"
@@ -95,10 +95,10 @@ def analyze_text(text_data):
     return jsonify(result)
 
 def analyze_code(text_data):
-    how_ai_generated_string, telescope_score = text_detector.predict(text_data, device)
+    how_ai_generated_string, telescope_score = code_detector.predict(text_data, device)
     
     result = {}
-    result['aeroblade'] = {
+    result['conoculars'] = {
         'is_ai_generated': how_ai_generated_string,
         'telescope_score ': float(telescope_score),
         'result': f"{how_ai_generated_string} (Telescope Score : {float(telescope_score):.4f})"

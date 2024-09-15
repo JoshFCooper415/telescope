@@ -417,7 +417,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://127.0.0.1:5080'; // http://108.18.219.188:5080
+        const API_URL = 'http://108.18.219.188:5080';
         const themeToggle = document.getElementById('theme-toggle');
         const body = document.body;
 
@@ -589,10 +589,6 @@
                     if (activeTab.id === 'text-content') {
                         content = activeTab.querySelector('textarea').value;
                         contentType = 'text';
-                    if (activeTab.id === 'code-content'){
-                        content = activeTab.querySelector('textarea').value;
-                        contentType = 'code';
-                    }
                     } else if (activeTab.id === 'image-content') {
                         const img = activeTab.querySelector('img');
                         if (img) {
@@ -602,6 +598,11 @@
                             resultContent.innerHTML = '<p>Error: No image selected</p>';
                             return;
                         }
+                        
+                    }
+                    else if (activeTab.id === 'code-content'){
+                        content = activeTab.querySelector('textarea').value;
+                        contentType = 'code';
                     }
 
                     if (!content) {
@@ -633,7 +634,7 @@
                         }
                         const data = await response.json();
                         
-                        let resultHTML = '<h3>Analysis Results:</h3>';
+                        let resultHTML = '<h3></h3>';
                         
                         if (data.final_result) {
                             resultHTML += `<p><strong>Final Result:</strong> ${data.final_result.is_ai_generated ? 'AI-generated' : 'Not AI-generated'}</p>`;
@@ -642,8 +643,12 @@
                         }
 
                         if (data.huggingface) {
-                            resultHTML += '<h4>HuggingFace Model:</h4>';
+                            resultHTML += '<h4>Binoculars:</h4>';
                             resultHTML += `<p>${data.huggingface.result}</p>`;
+                        }
+                        if (data.conoculars) {
+                            resultHTML += '<h4>Conoculars:</h4>';
+                            resultHTML += `<p>${data.conoculars.result}</p>`;
                         }
 
                         if (data.aeroblade) {
