@@ -9,6 +9,7 @@ from lpips import LPIPS
 from diffusers import AutoencoderKL
 import logging
 import traceback
+from ultralytics import YOLO
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -52,6 +53,18 @@ class AEROBLADE:
             transforms.ToTensor(),
         ])
 
+    def is_human_in_image(self, image):
+        yolo_model = YOLO("yolov10m")
+        results = yolo_model.predict(image)
+        
+        for result in results:
+            for box in result.boxes:
+                if int(box.cls) == 0:
+                    return True
+                
+        return False
+    
+    
     @torch.no_grad()
     def compute_reconstruction_error(self, image):
         self.logger.info("Computing reconstruction error...")
@@ -74,10 +87,12 @@ class AEROBLADE:
         except Exception as e:
             self.logger.error(f"Error in compute_reconstruction_error: {str(e)}")
             raise
+        
+
 
     def detect_aeroblade(self, image, threshold_definitely=0.001, threshold_probably=0.006, threshold_possibly=0.01):
         self.logger.info("Entered detect_aeroblade method")
-        
+        print(self.is_human_in_image(image))
         try:
             self.logger.info("About to compute reconstruction error")
             error = self.compute_reconstruction_error(image)
@@ -87,14 +102,26 @@ class AEROBLADE:
             raise
 
         try:
-            if error <= threshold_definitely:
-                result = "Definitely AI-generated"
-            elif threshold_definitely < error <= threshold_probably:
-                result = "Probably AI-generated"
-            elif threshold_probably < error <= threshold_possibly:
-                result = "Probably not AI-generated"
+            if self.is_human_in_image(image):
+                if error <= threshold_definitely:
+                    result = "Definitely AI-generated"
+                elif threshold_definitely < error <= threshold_probably:
+                    result = "Probably AI-generated"
+                elif threshold_probably < error <= threshold_possibly:
+                    result = "Probably not AI-generated"
+                else:
+                    result = "Not AI-generated"
+                    
             else:
-                result = "Not AI-generated"
+                if error <= 0.006:
+                    result = "Definitely AI-generated"
+                elif 0.006 < error <= 0.0069:
+                    result = "Probably AI-generated"
+                elif 0.0069 < error <= 0.015:
+                    result = "Probably not AI-generated"
+                else:
+                    result = "Not AI-generated"
+                
             
             self.logger.info(f"AEROBLADE detection result: {result}, error={error}")
         except Exception as e:
