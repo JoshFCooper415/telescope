@@ -1,10 +1,14 @@
 import quanto.quantize
+import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer, QuantoConfig
+from transformers import BitsAndBytesConfig
 import quanto
 import torch
 
-from typing import Tuple
+
+from typing import Tuple, List
 import re
+import numpy as np
 
 # BINOCULARS_MODEL_PERFORMER_NAME = "google/gemma-2-2b-it"
 # BINOCULARS_MODEL_OBSERVER_NAME = "google/gemma-2-2b"
@@ -13,21 +17,15 @@ BINOCULARS_MODEL_PERFORMER_NAME = "HuggingFaceTB/SmolLM-360M-Instruct"
 BINOCULARS_MODEL_OBSERVER_NAME = "HuggingFaceTB/SmolLM-360M"
 
 
-QUANTIZATION_CONFIG = QuantoConfig(weights="int4")
-
-# BINOCULARS_ACCURACY_THRESHOLD = 0.9015310749276843 
-# BINOCULARS_FPR_THRESHOLD = 0.8536432310785527 
-
+QUANTO_CONFIG = QuantoConfig(weights="int4")
+BITS_AND_BYTES_CONFIG = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
 
 class Binoculars:
     
     def __init__(self, observer_model_hf_name: str, performer_model_hf_name: str, hugging_face_api_token: str):
     
-        self.performer_model, self.performer_tokenizer = self.load_model_and_tokenizer(performer_model_hf_name, hugging_face_api_token)
-        self.observer_model, self.observer_tokenizer = self.load_model_and_tokenizer(observer_model_hf_name, hugging_face_api_token)
-        
-        quanto.quantize(self.performer_model, QUANTIZATION_CONFIG)
-        quanto.quantize(self.observer_model, QUANTIZATION_CONFIG)
+        self.performer_model, self.performer_tokenizer = self.load_model_and_tokenizer(performer_model_hf_name, hugging_face_api_token, BITS_AND_BYTES_CONFIG)
+        self.observer_model, self.observer_tokenizer = self.load_model_and_tokenizer(observer_model_hf_name, hugging_face_api_token, BITS_AND_BYTES_CONFIG)
 
 
     def predict(self, reference_text, device, threshold_possibly=5.3, threshold_probably=5.7, threshold_definitely=6.2) -> Tuple[str, float]:
@@ -51,105 +49,17 @@ class Binoculars:
 
         return score.cpu()[0]
     
-    @torch.no_grad()
-    def compute_log_perplexity(self, reference_text: str, model: AutoModelForCausalLM, tokenizer: AutoTokenizer, device):
-        
-        reference_text_tokens = tokenizer(reference_text, return_tensors="pt").to(device)
-        
-        total_log_likelihood = 0
-        word_count = 0
-
-        context_tokens = tokenizer.encode("", return_tensors="pt").to(device).type(torch.int32)
-
-        for token in reference_text_tokens['input_ids'][0]:
-            
-            context_tokens = torch.cat([context_tokens, token.reshape(1, 1)], dim=-1)
-            outputs = model(context_tokens)
     
-            next_token_logits = outputs.logits[:, -1, :]
-            next_tokens_logits_softmax = torch.softmax(next_token_logits, dim=-1)
-            
-            total_log_likelihood -= torch.log(next_tokens_logits_softmax[:,token])
-            
-            word_count += 1
-            
-        return total_log_likelihood / word_count
-            
-            
-    @torch.no_grad()    
-    def compute_log_cross_perplexity(
-        self, reference_text: str,
-        performer_model: AutoModelForCausalLM,
-        observer_model: AutoModelForCausalLM,
-        tokenizer: AutoTokenizer,
-        device
-        ):
-        
-        reference_text_tokens = tokenizer(reference_text, return_tensors="pt").to(device)
-        context_tokens = tokenizer.encode("", return_tensors="pt").to(device).type(torch.int32)
-        
-        total_cross_entropy = 0
-        word_count = 0
+    # def compute_score_batched(self, batched_reference_text: List[str], device) -> float:
+    #     score = self.compute_telescope_perplexity_batched(batched_reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
 
-        for token in reference_text_tokens['input_ids'][0]:
-            
-            context_tokens = torch.cat([context_tokens, token.reshape(1, 1)], dim=-1)
-            
-            performer_outputs = performer_model(context_tokens)
-            observer_outputs = observer_model(context_tokens)
-    
-            performer_next_token_logits = performer_outputs.logits[:, -1, :]
-            observer_next_token_logits = observer_outputs.logits[:, -1, :]
+    #     return score.cpu()[0]
 
-            performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
-            observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
-            
-            total_cross_entropy -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T) 
-            
-            word_count += 1
-            
-            
-        return total_cross_entropy / word_count
-        
-        
-    @torch.no_grad()    
-    def compute_log_cross_perplexity(
-        self, reference_text: str,
-        performer_model: AutoModelForCausalLM,
-        observer_model: AutoModelForCausalLM,
-        tokenizer: AutoTokenizer,
-        device
-        ):
-        
-        reference_text_tokens = tokenizer(reference_text, return_tensors="pt").to(device)
-        context_tokens = tokenizer.encode("", return_tensors="pt").to(device).type(torch.int32)
-        
-        total_cross_entropy = 0
-        word_count = 0
 
-        for token in reference_text_tokens['input_ids'][0]:
-            
-            context_tokens = torch.cat([context_tokens, token.reshape(1, 1)], dim=-1)
-            
-            performer_outputs = performer_model(context_tokens)
-            observer_outputs = observer_model(context_tokens)
-    
-            performer_next_token_logits = performer_outputs.logits[:, -1, :]
-            observer_next_token_logits = observer_outputs.logits[:, -1, :]
-
-            performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
-            observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
-            
-            total_cross_entropy -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T) 
-            
-            
-            
-        return total_cross_entropy / word_count
-    
-    
-    @torch.no_grad()    
+    @torch.inference_mode()
     def compute_telescope_perplexity(
-        self, reference_text: str,
+        self, 
+        reference_text: str,
         performer_model: AutoModelForCausalLM,
         observer_model: AutoModelForCausalLM,
         tokenizer: AutoTokenizer,
@@ -158,10 +68,9 @@ class Binoculars:
         
         reference_text_tokens = tokenizer(reference_text, return_tensors="pt").to(device)
         context_tokens = tokenizer.encode("", return_tensors="pt").to(device).type(torch.int32)
-        
+
         total_cross_entropy_cross_perplexity = 0
         total_cross_entropy_normal_perplexity = 0
-        word_count = 0
 
         for token in reference_text_tokens['input_ids'][0]:
             
@@ -182,8 +91,68 @@ class Binoculars:
             
         return total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity
     
+ 
+ 
+ 
+ 
+    def compute_telescope_perplexity_batched(encoding: transformers.BatchEncoding,
+                                   logits: torch.Tensor,
+                                   median: bool = False,
+                                   temperature: float = 1.0
+                                   ):
+        
+        ce_loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+        
+        shifted_logits = logits[..., :-1, :].contiguous() / temperature
+        shifted_labels = encoding.input_ids[..., 1:].contiguous()
+        shifted_attention_mask = encoding.attention_mask[..., 1:].contiguous()
+
+        if median:
+            ce_nan = (ce_loss_fn(shifted_logits.transpose(1, 2), shifted_labels).
+                    masked_fill(~shifted_attention_mask.bool(), float("nan")))
+            ppl = np.nanmedian(ce_nan.cpu().float().numpy(), 1)
+
+        else:
+            ppl = (ce_loss_fn(shifted_logits.transpose(1, 2), shifted_labels) *
+                shifted_attention_mask).sum(1) / shifted_attention_mask.sum(1)
+            ppl = ppl.to("cpu").float().numpy()
+
+        return ppl
     
-    def load_model_and_tokenizer(self, model_path: str, hugging_face_auth_token: str = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
+    @torch.inference_mode()
+    def compute_telescope_perplexity_batched(self, 
+        batched_reference_text: List[str],
+        performer_model: AutoModelForCausalLM,
+        observer_model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        device
+        ):
+        
+        batch_size = len(batched_reference_text)
+        encodings = self.tokenizer(
+            batched_reference_text,
+            return_tensors="pt",
+            padding="longest" if batch_size > 1 else False,
+            truncation=True,
+            max_length=self.max_token_observed,
+            return_token_type_ids=False
+        ).to(self.observer_model.device)
+        
+        
+        observer_logits = self.observer_model(**encodings.to("auto")).logits
+        performer_logits = self.performer_model(**encodings.to("auto")).logits
+        
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+        ppl = self.compute_telescope_perplexity_batched(encodings, performer_logits)
+        x_ppl = entropy(observer_logits.to(DEVICE_1), performer_logits.to(DEVICE_1),
+                        encodings.to(DEVICE_1), self.tokenizer.pad_token_id)
+        binoculars_scores = ppl / x_ppl
+        return ppl
+    
+    
+    def load_model_and_tokenizer(self, model_path: str, hugging_face_auth_token: str = None, quantization_config = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
         print(f"Loading tokenizer from {model_path}")
         
         # Load tokenizer
@@ -204,8 +173,10 @@ class Binoculars:
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             token=hugging_face_auth_token,
-            torch_dtype=torch.float16,
-            device_map="auto"
+            quantization_config=quantization_config,
+            device_map="auto",
+            # load_in_4bit=True,
+            attn_implementation="flash_attention_2"
         )
         
         # Move model to the appropriate device
