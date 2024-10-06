@@ -1,4 +1,3 @@
-import quanto.quantize
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer, QuantoConfig
 import quanto
 import torch
@@ -6,7 +5,8 @@ import torch
 from typing import Tuple
 
 
-def load_model_and_tokenizer(model_path: str, hugging_face_auth_token: str = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
+
+def load_model_and_tokenizer(model_path: str, hugging_face_auth_token: str = None, quantization_config = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     print(f"Loading tokenizer from {model_path}")
     
     # Load tokenizer
@@ -27,11 +27,19 @@ def load_model_and_tokenizer(model_path: str, hugging_face_auth_token: str = Non
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         token=hugging_face_auth_token,
-        torch_dtype=torch.float16,
-        device_map="auto"
+        quantization_config=quantization_config,
+        device_map="auto",
+        attn_implementation="flash_attention_2"
     )
     
     # Move model to the appropriate device
     print("Base model loaded successfully")
     
     return model, tokenizer
+
+
+def get_hugging_face_auth_token(auth_token_filename: str):
+    with open(auth_token_filename) as file:
+        auth_token = file.readline()
+        
+    return auth_token

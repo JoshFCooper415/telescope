@@ -1,0 +1,5 @@
+flash-attn --no-build-isolation
+transformers
+torch
+numpy
+quanto
