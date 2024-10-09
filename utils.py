@@ -43,3 +43,8 @@ def get_hugging_face_auth_token(auth_token_filename: str):
         auth_token = file.readline()
         
     return auth_token
+
+
+def create_attention_mask(total_length, number_of_words_to_include, device):
+    attention_mask = torch.concat((torch.ones((number_of_words_to_include,), device=device), torch.zeros((total_length-number_of_words_to_include,), device=device)))
+    return attention_mask.reshape(1, -1)

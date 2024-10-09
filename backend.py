@@ -7,7 +7,7 @@ import logging
 import traceback
 import torch
 from aeroblade import AEROBLADE
-from binoculars import Binoculars
+from telescope import Telescope
 from cononculars import Conoculars
 
 # Configuration
@@ -27,7 +27,7 @@ with open("hugging_face_auth_token.txt") as file:
     hugging_face_auth_token = file.readline().strip()
 
 aeroblade_detector = AEROBLADE()
-text_detector = Binoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
+text_detector = Telescope(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
 code_detector = Conoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
 
 @app.route('/analyze', methods=['POST', 'OPTIONS'])

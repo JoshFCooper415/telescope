@@ -1,17 +1,11 @@
-import quanto.quantize
-import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer, BatchEncoding
 from transformers import BitsAndBytesConfig, QuantoConfig
-import quanto
 import torch
 
 
 from typing import Tuple, List, Union
-import re
-import numpy as np
 
-
-from utils import load_model_and_tokenizer, get_hugging_face_auth_token
+from utils import load_model_and_tokenizer, get_hugging_face_auth_token, create_attention_mask
 from metrics import perplexity, entropy
 
 
@@ -21,16 +15,14 @@ from metrics import perplexity, entropy
 BINOCULARS_ACCURACY_THRESHOLD = 0.9015310749276843  # optimized for f1-score
 BINOCULARS_FPR_THRESHOLD = 0.8536432310785527  # optimized for low-fpr [chosen at 0.01%]
 
-BINOCULARS_MODEL_PERFORMER_NAME = "HuggingFaceTB/SmolLM-360M-Instruct"
-BINOCULARS_MODEL_OBSERVER_NAME = "HuggingFaceTB/SmolLM-360M"
+PERFORMER_MODEL_NAME = "HuggingFaceTB/SmolLM-360M-Instruct"
+OBSERVER_MODEL_NAME = "HuggingFaceTB/SmolLM-360M"
 
-
-QUANTO_CONFIG = QuantoConfig(weights="int4")
 BITS_AND_BYTES_CONFIG = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
 
 
 
-class Binoculars:
+class Telescope:
     
     def __init__(self, observer_model_hf_name: str, performer_model_hf_name: str, hugging_face_api_token: str):
     
@@ -71,20 +63,70 @@ class Binoculars:
         return result_text, telescope_score
         
         
-    def compute_score(self, reference_text: Union[str, List[str]], device: torch.device, use_binoculars=False) -> float:
+    def compute_score(self, reference_text: Union[str, List[str]], device: torch.device, use_binoculars=False, batch_size = 1) -> float:
         
         if use_binoculars == True:
             score = self.compute_binoculars_perplexity(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
         else:
-            score = self.compute_telescope_perplexity(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
+            score = self.compute_telescope_perplexity(
+                reference_text, 
+                self.performer_model, 
+                self.observer_model, 
+                self.performer_tokenizer, 
+                batch_size=batch_size, 
+                device=device
+            )
 
-        return score.cpu()
+        return score
+ 
+    @torch.inference_mode()
+    def compute_telescope_perplexity2(
+        self, 
+        reference_text: str,
+        performer_model: AutoModelForCausalLM,
+        observer_model: AutoModelForCausalLM,
+        tokenizer: PreTrainedTokenizer,
+        batch_size: int = 1,
+        number_of_tokens_to_skip: int = 1,
+        device: torch.device = torch.device("cpu"),
+        ):
+        
+        tokenizer.padding_side = "left"
+        tokenizer.pad_token = tokenizer.eos_token
+        
+        reference_text_encodings = tokenizer(reference_text, return_tensors="pt").to(device)
 
+        attention_mask_size = reference_text_encodings["attention_mask"].shape[1]
+        attention_mask = torch.tril(torch.ones(attention_mask_size, attention_mask_size, device=device)).unsqueeze(0)
+        reference_text_encodings["attention_mask"] = attention_mask
+        
+        performer_outputs = performer_model(**reference_text_encodings)
+        observer_outputs = observer_model(**reference_text_encodings)
+        
+        print("got here")
+        
+        total_cross_entropy_cross_perplexity = 0
+        total_cross_entropy_normal_perplexity = 0
+        
+        # Loop over each item in the chunk and calculate the telescope score for that item
+        for index in range(0, performer_outputs.logits.shape[0]):
+            performer_next_token_logits = performer_outputs.logits[index, -1, :]
+            observer_next_token_logits = observer_outputs.logits[index, -1, :]
+                            
+            performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
+            observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
+            
+            # print(f"index: {index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1]])}")
+            total_cross_entropy_cross_perplexity -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).reshape(1, -1).T) 
+            total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1]])
 
-    def create_attention_mask(self, total_length, number_of_words_to_include, device):
-        attention_mask = torch.concat((torch.ones((number_of_words_to_include,), device=device), torch.zeros((total_length-number_of_words_to_include,), device=device)))
-        return attention_mask.reshape(1, -1)
-
+        print(total_cross_entropy_normal_perplexity/total_cross_entropy_cross_perplexity)
+        return total_cross_entropy_normal_perplexity.cpu() /total_cross_entropy_cross_perplexity.cpu()
+        
+        
+        
+        
+        
     @torch.inference_mode()
     def compute_telescope_perplexity(
         self, 
@@ -92,11 +134,12 @@ class Binoculars:
         performer_model: AutoModelForCausalLM,
         observer_model: AutoModelForCausalLM,
         tokenizer: PreTrainedTokenizer,
-        device: torch.device
+        batch_size: int = 1,
+        number_of_tokens_to_skip: int = 1,
+        device: torch.device = torch.device("cpu"),
         ):
         
-        NUMBER_OF_TOKENS_TO_SKIP = 1
-        
+    
         tokenizer.padding_side = "left"
         tokenizer.pad_token = tokenizer.eos_token
         
@@ -107,57 +150,64 @@ class Binoculars:
         reference_text_split_by_tokens: List[str] = []
         for token in reference_text_tokens:
             reference_text_split_by_tokens.append(tokenizer.decode(token))
-            
-        print(reference_text_split_by_tokens)
         
-        # prepare batch of contexts
-        reference_text_batch: List[str] = []
-        reference_text_history = ""
+        
+        # prepare list of all contexts. This means that we want the reference text contexts to look like the following for the sequence "I like pizza":
+        # ["I", "I like", "I like pizza"]
+        reference_text_contexts: List[str] = []
+        temp_reference_text_history = ""
         for index, token in enumerate(reference_text_split_by_tokens):
-            if index >= NUMBER_OF_TOKENS_TO_SKIP:
-                reference_text_batch.append(reference_text_history)
+            if index >= number_of_tokens_to_skip:
+                reference_text_contexts.append(temp_reference_text_history)
                 
-            reference_text_history += token
+            temp_reference_text_history += token
             
-
-        reference_text_batch_encoding: BatchEncoding = tokenizer(reference_text_batch, return_tensors="pt", padding=True).to(device)
-        reference_text_batch_tokens = reference_text_batch_encoding["input_ids"][0]
         
-        BATCH_SIZE = 4
-        BATCH_COUNT = int(np.ceil(len(reference_text_batch_tokens)/BATCH_SIZE))
-        NUMBER_OF_TOKENS_TO_SKIP = 1
-
+        # Cut the list of contexts into chunks of size equal to the batch size, these chunks will be processed together at inference
+        reference_text_batched: List[List[str]] = []
+        temp_array = []
+        for index, context_string in enumerate(reference_text_contexts):
+            if (index % batch_size) == 0 and index != 0:
+                reference_text_batched.append(temp_array)
+                temp_array = []
+            
+            temp_array.append(context_string)
+        reference_text_batched.append(temp_array)
+        
         total_cross_entropy_cross_perplexity = 0
         total_cross_entropy_normal_perplexity = 0
         
-        # for batch_index in range(BATCH_COUNT):
-        #     batch_starting_index = batch_index * BATCH_SIZE + NUMBER_OF_TOKENS_TO_SKIP
-        #     batch_ending_index = min(len(reference_text_batch_tokens), batch_starting_index + BATCH_SIZE)
-
-        #     if (batch_starting_index == batch_ending_index): continue   # edge case
-        performer_outputs = performer_model(**reference_text_batch_encoding)
-        observer_outputs = observer_model(**reference_text_batch_encoding)
-
-        # Loop over each item in the batch
-        for index in range(0, performer_outputs.logits.shape[0]):
-            performer_next_token_logits = performer_outputs.logits[index, -1, :]
-            observer_next_token_logits = observer_outputs.logits[index, -1, :]
-                            
-            performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
-            observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
+        
+        for chunk_index, reference_text_chunk in enumerate(reference_text_batched):
             
-            print(f"index: {index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index]])}")
-            total_cross_entropy_cross_perplexity -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).reshape(1, -1).T) 
-            total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1]])
-        
-        
-        print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
-        return total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity
+            # Tokenize each chunk
+            reference_text_chunk_encoding: BatchEncoding = tokenizer(reference_text_chunk, return_tensors="pt", padding=True).to(device)
+
+            # Compute the logits from the model
+            performer_outputs = performer_model(**reference_text_chunk_encoding)
+            observer_outputs = observer_model(**reference_text_chunk_encoding)
+
+
+            # Loop over each item in the chunk and calculate the telescope score for that item
+            for index in range(0, performer_outputs.logits.shape[0]):
+                performer_next_token_logits = performer_outputs.logits[index, -1, :]
+                observer_next_token_logits = observer_outputs.logits[index, -1, :]
+                                
+                performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
+                observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
+                
+                # print(f"index: {index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1]])}")
+                total_cross_entropy_cross_perplexity -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).reshape(1, -1).T) 
+                total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1 + chunk_index*batch_size]])
+
+
+        # print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
+        return total_cross_entropy_normal_perplexity.cpu()/  total_cross_entropy_cross_perplexity.cpu()
         
         
         
     @torch.inference_mode()
-    def compute_binoculars_perplexity(
+    def compute_binoculars_perplexity2(
         self, 
         reference_text: str,
         performer_model: AutoModelForCausalLM,
@@ -189,7 +239,7 @@ class Binoculars:
         #     # calculate attention mask for each token (context is all the same which is the entire sequence)
         #     attention_masks = []
         #     for index in range(batch_starting_index, batch_ending_index):
-        #         current_token_attention_mask = self.create_attention_mask(total_length=number_of_words_in_reference_text, number_of_words_to_include=index, device=device)
+        #         current_token_attention_mask = create_attention_mask(total_length=number_of_words_in_reference_text, number_of_words_to_include=index, device=device)
         #         attention_masks.append(current_token_attention_mask)
 
         #     attention_masks = torch.concat(attention_masks, dim=0)
@@ -297,37 +347,40 @@ class Binoculars:
     
     
     
-    # @torch.inference_mode()
-    # def compute_binoculars_perplexity(self, 
-    #     batched_reference_text: List[str],
-    #     performer_model: AutoModelForCausalLM,
-    #     observer_model: AutoModelForCausalLM,
-    #     tokenizer: AutoTokenizer,
-    #     device
-    #     ):
+    @torch.inference_mode()
+    def compute_binoculars_perplexity(
+        self, 
+        batched_reference_text: str,
+        performer_model: AutoModelForCausalLM,
+        observer_model: AutoModelForCausalLM,
+        tokenizer: AutoTokenizer,
+        device
+        ):
+        """Paper implementation of binoculars for comparison"""
         
-    #     batch_size = len(batched_reference_text)
-    #     encodings = self.tokenizer(
-    #         batched_reference_text,
-    #         return_tensors="pt",
-    #         padding="longest" if batch_size > 1 else False,
-    #         truncation=True,
-    #         max_length=self.max_token_observed,
-    #         return_token_type_ids=False
-    #     ).to(self.observer_model.device)
+        BATCH_SIZE = 1
+        encodings = tokenizer(
+            batched_reference_text,
+            return_tensors="pt",
+            padding="longest" if BATCH_SIZE > 1 else False,
+            truncation=True,
+            return_token_type_ids=False
+        ).to(device)
         
+        # print(encodings)
         
-    #     observer_logits = self.observer_model(**encodings.to("auto")).logits
-    #     performer_logits = self.performer_model(**encodings.to("auto")).logits
+        observer_logits = observer_model(**encodings).logits
+        performer_logits = performer_model(**encodings).logits
         
-    #     if torch.cuda.is_available():
-    #         torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
-    #     ppl = self.compute_telescope_perplexity_batched(encodings, performer_logits)
-    #     x_ppl = entropy(observer_logits.to(DEVICE_1), performer_logits.to(DEVICE_1),
-    #                     encodings.to(DEVICE_1), self.tokenizer.pad_token_id)
-    #     binoculars_scores = ppl / x_ppl
-    #     return ppl
+        ppl = perplexity(encodings, performer_logits)
+        x_ppl = entropy(observer_logits.to(device), performer_logits.to(device),
+                        encodings.to(device), tokenizer.pad_token_id)
+        binoculars_scores = ppl / x_ppl
+        # print(binoculars_scores)
+        return binoculars_scores
 
     
     
@@ -337,12 +390,15 @@ class Binoculars:
 
 if __name__ == "__main__":
     hugging_face_auth_token = get_hugging_face_auth_token("hugging_face_auth_token.txt")
-    binoculars = Binoculars(BINOCULARS_MODEL_OBSERVER_NAME, BINOCULARS_MODEL_PERFORMER_NAME, hugging_face_auth_token)
+    binoculars = Telescope(OBSERVER_MODEL_NAME, PERFORMER_MODEL_NAME, hugging_face_auth_token)
     
-    with open("binoculars_test_prompt.txt") as file:
+    with open("test_prompt.txt") as file:
         SENTENCE = "\n".join(file.readlines())
         
     # SENTENCE = "Rose is a flower so beautiful that it has invoked inspiration in several artists and poets. Children are familiar with the rose and other such flowers right from toddlerhood when they took strolls in the garden, to the time they started enjoying picture books, to learning the alphabet 'R' for rose. The flower may have been a part of their home décor, or a gift they gave someone on an occasion."
-    is_ai_generated, score = binoculars.predict(SENTENCE, "cuda:0")
-    print(f"is ai generated: {is_ai_generated}")
+    # is_ai_generated, score = binoculars.predict(SENTENCE, "cuda:0")
+    # print(f"is ai generated: {is_ai_generated}")
+    # print(f"score: {score}")
+    
+    score = binoculars.compute_score(SENTENCE, "cuda:0", use_binoculars=True)
     print(f"score: {score}")

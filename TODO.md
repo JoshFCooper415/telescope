@@ -1,6 +1,5 @@
-Batch over single text and batches of text
-Make everything into a docker container to resolve dependency conflicts with flash attention
-
+Batch over single text 
+Batch over batches of text
 
 Do an ablation test on the "mistake" (giving the model the token we want it to predict in the context and rating it on well it is able to predict that token). Also try setting the perplexity to 1 and just testing the inverse of the cross perplexity as the metric
 
