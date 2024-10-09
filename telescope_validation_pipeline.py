@@ -68,7 +68,7 @@ def main():
     
     start_time = time.time()
     for index, (text_data, is_ai_generated) in tqdm(enumerate(zip(text_dataset, is_ai_generated_dataset)), total=len(text_dataset)):
-        if index > 100: continue
+        if index > 30: continue
         
         telescope_score = text_detector.compute_score(text_data, "cuda:0", batch_size=2, use_binoculars=True)
        

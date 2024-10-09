@@ -66,9 +66,9 @@ class Telescope:
     def compute_score(self, reference_text: Union[str, List[str]], device: torch.device, use_binoculars=False, batch_size = 1) -> float:
         
         if use_binoculars == True:
-            score = self.compute_binoculars_perplexity(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
+            score = self.compute_telescope_perplexity_unbatched(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
         else:
-            score = self.compute_telescope_perplexity(
+            score = self.compute_telescope_perplexity_batched(
                 reference_text, 
                 self.performer_model, 
                 self.observer_model, 
@@ -80,7 +80,7 @@ class Telescope:
         return score
  
     @torch.inference_mode()
-    def compute_telescope_perplexity2(
+    def compute_telescope_perplexity_causal_mask(
         self, 
         reference_text: str,
         performer_model: AutoModelForCausalLM,
@@ -128,7 +128,7 @@ class Telescope:
         
         
     @torch.inference_mode()
-    def compute_telescope_perplexity(
+    def compute_telescope_perplexity_batched(
         self, 
         reference_text: str,
         performer_model: AutoModelForCausalLM,
@@ -182,6 +182,7 @@ class Telescope:
             
             # Tokenize each chunk
             reference_text_chunk_encoding: BatchEncoding = tokenizer(reference_text_chunk, return_tensors="pt", padding=True).to(device)
+            print(reference_text_chunk_encoding["attention_mask"])
 
             # Compute the logits from the model
             performer_outputs = performer_model(**reference_text_chunk_encoding)
@@ -204,10 +205,54 @@ class Telescope:
         # print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
         return total_cross_entropy_normal_perplexity.cpu()/  total_cross_entropy_cross_perplexity.cpu()
         
+    
+    @torch.inference_mode()
+    def compute_telescope_perplexity_unbatched(
+        self, 
+        reference_text: str,
+        performer_model: AutoModelForCausalLM,
+        observer_model: AutoModelForCausalLM,
+        tokenizer: PreTrainedTokenizer,
+        device: torch.device
+        ):
+
+        reference_text_batch_encoding: BatchEncoding = tokenizer(reference_text, return_tensors="pt", padding=True, truncation=True).to(device)
+        reference_text_tokens = reference_text_batch_encoding["input_ids"]
+ 
+        NUMBER_OF_TOKENS_TO_SKIP = 0
+    
+        total_cross_entropy_cross_perplexity = 0
+        total_cross_entropy_normal_perplexity = 0
         
+
+        reference_text_tokens = reference_text_tokens[0]
+        for token_index, token in enumerate(reference_text_tokens):
+            if token_index < NUMBER_OF_TOKENS_TO_SKIP: continue
+            
+            context_tokens = reference_text_tokens[:(token_index+1)].reshape(1, -1)
+            
+            performer_outputs = performer_model(context_tokens)
+            observer_outputs = observer_model(context_tokens)
+    
+            performer_next_token_logits = performer_outputs.logits[:, -1, :]
+            observer_next_token_logits = observer_outputs.logits[:, -1, :]
+
+            performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
+            observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
+            
+            print(f"index: {token_index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[:, token])}")
+
+            total_cross_entropy_cross_perplexity -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T) 
+            total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[:, token])
+        
+        print("hi")
+        print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
+        return total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity
+    
+ 
         
     @torch.inference_mode()
-    def compute_binoculars_perplexity2(
+    def compute_binoculars_perplexity_old(
         self, 
         reference_text: str,
         performer_model: AutoModelForCausalLM,
