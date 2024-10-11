@@ -2,7 +2,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, P
 from transformers import BitsAndBytesConfig, QuantoConfig
 import torch
 
-
+import time
 from typing import Tuple, List, Union
 
 from utils import load_model_and_tokenizer, get_hugging_face_auth_token, create_attention_mask
@@ -66,16 +66,17 @@ class Telescope:
     def compute_score(self, reference_text: Union[str, List[str]], device: torch.device, use_binoculars=False, batch_size = 1) -> float:
         
         if use_binoculars == True:
-            score = self.compute_telescope_perplexity_unbatched(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
+            score = self.compute_binoculars_perplexity(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
         else:
-            score = self.compute_telescope_perplexity_batched(
-                reference_text, 
-                self.performer_model, 
-                self.observer_model, 
-                self.performer_tokenizer, 
-                batch_size=batch_size, 
-                device=device
-            )
+            score = self.compute_telescope_perplexity_unbatched(reference_text, self.performer_model, self.observer_model, self.performer_tokenizer, device)
+            # score = self.compute_telescope_perplexity_batched(
+            #     reference_text, 
+            #     self.performer_model, 
+            #     self.observer_model, 
+            #     self.performer_tokenizer, 
+            #     batch_size=batch_size, 
+            #     device=device
+            # )
 
         return score
  
@@ -182,7 +183,7 @@ class Telescope:
             
             # Tokenize each chunk
             reference_text_chunk_encoding: BatchEncoding = tokenizer(reference_text_chunk, return_tensors="pt", padding=True).to(device)
-            print(reference_text_chunk_encoding["attention_mask"])
+            # print(reference_text_chunk_encoding["attention_mask"])
 
             # Compute the logits from the model
             performer_outputs = performer_model(**reference_text_chunk_encoding)
@@ -199,14 +200,26 @@ class Telescope:
                 
                 # print(f"index: {index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1]])}")
                 total_cross_entropy_cross_perplexity -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).reshape(1, -1).T) 
-                total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1 + chunk_index*batch_size]])
+                total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index + chunk_index*batch_size]])
 
+                print(f"index: {index}, cross: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T) }, normal: {torch.log(performer_next_tokens_logits_softmax[reference_text_tokens[index+1 + chunk_index*batch_size]])}")
+
+                del observer_next_token_logits_softmax, performer_next_tokens_logits_softmax, performer_next_token_logits, observer_next_token_logits
+                torch.cuda.empty_cache() 
+
+            del performer_outputs, observer_outputs, reference_text_chunk_encoding
+            torch.cuda.empty_cache() 
 
         # print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
         return total_cross_entropy_normal_perplexity.cpu()/  total_cross_entropy_cross_perplexity.cpu()
         
-    
+        
+        
     @torch.inference_mode()
+    def get_model_output(self, model, input):
+        return model(input)
+        
+        
     def compute_telescope_perplexity_unbatched(
         self, 
         reference_text: str,
@@ -231,8 +244,8 @@ class Telescope:
             
             context_tokens = reference_text_tokens[:(token_index+1)].reshape(1, -1)
             
-            performer_outputs = performer_model(context_tokens)
-            observer_outputs = observer_model(context_tokens)
+            performer_outputs = self.get_model_output(performer_model, context_tokens)
+            observer_outputs = self.get_model_output(observer_model, context_tokens)
     
             performer_next_token_logits = performer_outputs.logits[:, -1, :]
             observer_next_token_logits = observer_outputs.logits[:, -1, :]
@@ -240,12 +253,20 @@ class Telescope:
             performer_next_tokens_logits_softmax = torch.softmax(performer_next_token_logits, dim=-1)
             observer_next_token_logits_softmax = torch.softmax(observer_next_token_logits, dim=-1)
             
-            print(f"index: {token_index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[:, token])}")
+            # print(f"index: {token_index}, cross_perp: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T)}, normal perp: {torch.log(performer_next_tokens_logits_softmax[:, token])}")
 
             total_cross_entropy_cross_perplexity -= torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T) 
             total_cross_entropy_normal_perplexity -= torch.log(performer_next_tokens_logits_softmax[:, token])
-        
-        print("hi")
+            
+            print(f"index: {token_index}, cross: {torch.matmul(performer_next_tokens_logits_softmax, torch.log(observer_next_token_logits_softmax).T) }, normal: {torch.log(performer_next_tokens_logits_softmax[:, token])}")
+
+            del observer_next_token_logits_softmax
+            del performer_next_tokens_logits_softmax
+            del performer_next_token_logits
+            del observer_next_token_logits
+            del context_tokens
+            torch.cuda.empty_cache() 
+            
         print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
         return total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity
     
@@ -387,9 +408,6 @@ class Telescope:
         print(total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity)
         return total_cross_entropy_normal_perplexity/  total_cross_entropy_cross_perplexity
     
- 
-
-    
     
     
     @torch.inference_mode()
@@ -445,5 +463,7 @@ if __name__ == "__main__":
     # print(f"is ai generated: {is_ai_generated}")
     # print(f"score: {score}")
     
-    score = binoculars.compute_score(SENTENCE, "cuda:0", use_binoculars=True)
+    start_time = time.time()
+    score = binoculars.compute_score(SENTENCE, "cuda:0", batch_size=16, use_binoculars=False)
     print(f"score: {score}")
+    print(f"time taken: {time.time() - start_time}")

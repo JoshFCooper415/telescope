@@ -28,12 +28,24 @@ def plot_roc_curve(y_true, y_scores):
     print(f"Mean score: {np.mean(y_scores)}")
     print(f"Std score: {np.std(y_scores)}")
     
+    number_correct = 0
+    total = 0
+    for i in range(len(y_scores)):
+        total += 1
+        # if y_true[i] and y_scores[i] > 5.3: number_correct+=1
+        # if not y_true[i] and y_scores[i] < 5.3: number_correct+=1
+        
+        if y_true[i] and y_scores[i] < 0.9015310749276843: number_correct+=1
+        if not y_true[i] and y_scores[i] > 0.9015310749276843: number_correct+=1
+        
+    print(f"accuracy: {number_correct/total}")
+    
     # Check for NaN or infinity values
     if np.isnan(y_scores).any() or np.isinf(y_scores).any():
         print("Warning: y_scores contains NaN or infinity values")
         y_scores = np.nan_to_num(y_scores)
     
-    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
     roc_auc = auc(fpr, tpr)
    
     plt.figure()
@@ -55,7 +67,8 @@ def plot_roc_curve(y_true, y_scores):
 def main():
     hugging_face_auth_token = get_hugging_face_auth_token("hugging_face_auth_token.txt")
     
-    essay_dataset = pd.read_csv("validate_datasets/Essay_Dataset.csv").sample(frac=1).reset_index(drop=True)
+    essay_dataset = pd.read_csv("validate_datasets/AI_Human.csv").sample(frac=0.01).reset_index(drop=True)
+    # essay_dataset = pd.read_csv("validate_datasets/Essay_Dataset.csv").sample(frac=0.1).reset_index(drop=True)
 
     text_dataset = essay_dataset["text"]
     is_ai_generated_dataset = essay_dataset["generated"]
@@ -65,18 +78,26 @@ def main():
     
     labels = []
     telescope_scores = []
+    text_lengths = []
     
     start_time = time.time()
     for index, (text_data, is_ai_generated) in tqdm(enumerate(zip(text_dataset, is_ai_generated_dataset)), total=len(text_dataset)):
-        if index > 30: continue
+        if index > 200: continue
         
-        telescope_score = text_detector.compute_score(text_data, "cuda:0", batch_size=2, use_binoculars=True)
+        telescope_score = text_detector.compute_score(text_data, "cuda:0", batch_size=1, use_binoculars=False)
        
         print(f"is ai generated: {is_ai_generated}, score: {telescope_score}")
         labels.append(is_ai_generated)
-        telescope_scores.append(telescope_score)
+        telescope_scores.append(telescope_score.cpu()[0])
+        text_lengths.append(len(text_data))
+        print(telescope_scores)
+        print(labels)
+        print(text_lengths)
+        
+        if index > 1: plot_roc_curve(np.array(labels), np.array(telescope_scores))
     
     end_time = time.time()
+
     # Convert lists to numpy arrays
     labels = np.array(labels)
     telescope_scores = np.array(telescope_scores)
